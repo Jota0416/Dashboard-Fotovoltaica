@@ -9,7 +9,6 @@ import os
 st.set_page_config(page_title="Dashboard Analítico O&M", layout="wide")
 
 # --- CONFIGURAÇÃO DO ARQUIVO PADRÃO ---
-# Certifique-se de que o arquivo no GitHub tenha exatamente este nome:
 ARQUIVO_PADRAO = "dados_solar.xlsx"
 
 # --- CSS PARA IMPRESSÃO ---
@@ -96,7 +95,7 @@ def plot_heatmap_segmentado(df_d, key_pref):
     for usinas, cor, nome in gps:
         df_g = df_d[df_d['Usina'].isin(usinas)]
         if not df_g.empty:
-            st.plotly_chart(px.imshow(df_g.pivot(index='Usina', columns='Dia', values='Geração (MWh)'), text_auto=".1f", color_continuous_scale=cor, title=f"Intensidade Diária: {nome}"), True, key=f"{key_pref}_{nome}")
+            st.plotly_chart(px.imshow(df_g.pivot(index='Usina', columns='Dia', values='Geração (MWh)'), text_auto=".1f", color_continuous_scale=cor, title=f"Intensidade Diária: {nome}"), use_container_width=True, key=f"{key_pref}_{nome}")
 
 def plot_roscas(df_m, key_pref):
     cols = st.columns(len(df_m))
@@ -113,7 +112,6 @@ def plot_roscas(df_m, key_pref):
 st.sidebar.header("📁 Dados do Portfólio")
 df_m, df_d = None, None
 
-# Tenta carregar automaticamente do repositório
 if os.path.exists(ARQUIVO_PADRAO):
     df_m, df_d = carregar_dados_excel(ARQUIVO_PADRAO)
     st.sidebar.success(f"✅ Base de dados '{ARQUIVO_PADRAO}' carregada.")
@@ -121,7 +119,6 @@ if os.path.exists(ARQUIVO_PADRAO):
         st.cache_data.clear()
         st.rerun()
 
-# Opção de upload para novos arquivos (sobrescreve o padrão se usado)
 arquivo_upload = st.sidebar.file_uploader("Ou envie um novo arquivo Excel:", type=["xlsx"])
 if arquivo_upload:
     df_m, df_d = carregar_dados_excel(arquivo_upload)
@@ -134,11 +131,21 @@ if df_m is not None:
         st.title("☀️ Dashboard Analítico - Portfólio Solar")
         t1, t2, t3, t4, t5, t6, t7 = st.tabs(["📈 Diária", "📊 Curva S", "📦 Boxplot", "🔍 Perdas", "🎯 Dispersão", "🗓️ Heatmap", "📑 Relatório"])
         
-        with t1: gerar_kpis(df_mf); st.plotly_chart(px.line(df_df, x='Data', y='Geração (MWh)', color='Usina', title="Geração Diária").update_layout(plot_bgcolor='rgba(0,0,0,0)'), True)
-        with t2: st.plotly_chart(plot_curva_s_global(df_df), True, key="global_s"); st.divider(); st.subheader("Análise Individualizada"); renderizar_curvas_s_individuais(df_df, sel, "aba_s")
-        with t3: st.plotly_chart(px.box(df_df, x='Usina', y='Geração (MWh)', color='Usina', title="Variabilidade").update_layout(plot_bgcolor='rgba(0,0,0,0)'), True)
-        with t4: st.subheader("Decomposição de Perdas (%)"); plot_roscas(df_mf, "r4")
-        with t5: st.plotly_chart(px.scatter(df_df, x="Irradiação (kWh/m²)", y="Geração (MWh)", color="Usina", trendline="ols", title="Eficiência").update_layout(plot_bgcolor='rgba(0,0,0,0)'), True)
+        with t1: 
+            gerar_kpis(df_mf)
+            st.plotly_chart(px.line(df_df, x='Data', y='Geração (MWh)', color='Usina', title="Geração Diária").update_layout(plot_bgcolor='rgba(0,0,0,0)'), use_container_width=True, key="aba_linha")
+        with t2: 
+            st.plotly_chart(plot_curva_s_global(df_df), use_container_width=True, key="global_s")
+            st.divider()
+            st.subheader("Análise Individualizada")
+            renderizar_curvas_s_individuais(df_df, sel, "aba_s")
+        with t3: 
+            st.plotly_chart(px.box(df_df, x='Usina', y='Geração (MWh)', color='Usina', title="Variabilidade").update_layout(plot_bgcolor='rgba(0,0,0,0)'), use_container_width=True, key="aba_box")
+        with t4: 
+            st.subheader("Decomposição de Perdas (%)")
+            plot_roscas(df_mf, "r4")
+        with t5: 
+            st.plotly_chart(px.scatter(df_df, x="Irradiação (kWh/m²)", y="Geração (MWh)", color="Usina", trendline="ols", title="Eficiência").update_layout(plot_bgcolor='rgba(0,0,0,0)'), use_container_width=True, key="aba_scat")
         with t6:
             min_d, max_d = int(df_df['Dia'].min()), int(df_df['Dia'].max())
             intervalo = st.slider("Intervalo de dias:", min_d, max_d, (min_d, max_d))
@@ -146,12 +153,15 @@ if df_m is not None:
         with t7:
             st.subheader("Relatório Consolidado")
             if st.button("🖨️ Gerar PDF"): components.html("<script>setTimeout(function(){window.parent.print();}, 500);</script>", height=0)
-            st.divider(); gerar_kpis(df_mf)
-            st.plotly_chart(plot_curva_s_global(df_df), True, key="rel_global_s")
-            st.subheader("Detalhamento por Unidade"); renderizar_curvas_s_individuais(df_df, sel, "rel_ind_s")
-            st.plotly_chart(px.box(df_df, x='Usina', y='Geração (MWh)', color='Usina', title="Variabilidade").update_layout(plot_bgcolor='rgba(0,0,0,0)'), True)
+            st.divider()
+            gerar_kpis(df_mf)
+            st.plotly_chart(plot_curva_s_global(df_df), use_container_width=True, key="rel_global_s")
+            st.subheader("Detalhamento por Unidade")
+            renderizar_curvas_s_individuais(df_df, sel, "rel_ind_s")
+            st.plotly_chart(px.box(df_df, x='Usina', y='Geração (MWh)', color='Usina', title="Variabilidade").update_layout(plot_bgcolor='rgba(0,0,0,0)'), use_container_width=True, key="rel_box")
             plot_heatmap_segmentado(df_df, "rel_heat")
-            st.subheader("Balanço de Perdas"); plot_roscas(df_mf, "rel_r4")
+            st.subheader("Balanço de Perdas")
+            plot_roscas(df_mf, "rel_r4")
 else:
     st.title("☀️ Dashboard Analítico - Portfólio Solar")
     st.info("ℹ️ Para iniciar, envie o arquivo Excel pelo menu lateral ou certifique-se de que 'dados_solar.xlsx' está no repositório.")
