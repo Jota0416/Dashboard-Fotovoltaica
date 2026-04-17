@@ -32,11 +32,10 @@ def extrair_nome_curto(nome_longo):
     Transforma 'EQUIP - Inversores 1 - INV, 01 - corrente string 14' em '1.14'
     """
     nome_str = str(nome_longo)
-    # Busca 'INV, 01' e 'string 14' extraindo apenas os números
     match = re.search(r'INV,?\s*0*(\d+).*?string\s*(\d+)', nome_str, flags=re.IGNORECASE)
     if match:
         inv = match.group(1)
-        strg = match.group(2).zfill(2) # Garante que a string tenha sempre dois dígitos (ex: 01, 14)
+        strg = match.group(2).zfill(2)
         return f"{inv}.{strg}"
     return nome_str
 
@@ -49,7 +48,6 @@ def carregar_dados(arquivo):
         else:
             df = pd.read_excel(arquivo)
             
-        # Aplica a limpeza de nomes na coluna de data points
         df['Nome do data point'] = df['Nome do data point'].apply(extrair_nome_curto)
             
         df['Tempo'] = pd.to_datetime(df['Tempo'], dayfirst=True)
@@ -87,9 +85,12 @@ def plot_linha_corrente(df):
     return fig
 
 def plot_boxplot_strings(df):
+    # Filtro operacional: Exclui dados noturnos para evitar distorção estatística
+    df_filtrado = df[(df['Tempo'].dt.hour >= 6) & (df['Tempo'].dt.hour <= 18)]
+    
     fig = px.box(
-        df, x='Nome do data point', y='Valor', color='Nome do data point',
-        title="Dispersão e Desvios de Corrente por String",
+        df_filtrado, x='Nome do data point', y='Valor', color='Nome do data point',
+        title="Dispersão e Desvios de Corrente por String (06:00 - 18:00)",
         labels={'Valor': 'Corrente (A)', 'Nome do data point': 'Strings'}
     )
     fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
@@ -155,7 +156,7 @@ if df_bruto is not None:
             st.plotly_chart(plot_linha_corrente(df_final), use_container_width=True, key="c_linha")
         
         with t2:
-            st.info("O Boxplot ajuda a identificar strings que geraram sistematicamente menos corrente que as demais ao longo do dia analisado.")
+            st.info("O Boxplot ajuda a identificar strings com subperformance crônica. Os dados noturnos (fora da janela 06h-18h) foram filtrados para não distorcer o cálculo dos quartis.")
             st.plotly_chart(plot_boxplot_strings(df_final), use_container_width=True, key="c_box")
             
         with t3:
