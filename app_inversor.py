@@ -68,50 +68,57 @@ def gerar_kpis(df):
     c3.metric("Corrente Média Global (A)", f"{corrente_med:.2f}")
     c4.metric("String com Pico de Corrente", f"{string_pico}")
 
-def plot_linha_corrente(df):
-    # 1. Calcular a curva média global do inversor
+def renderizar_aba_curvas(df):
+    # 1. Cálculo da Média Global
     df_media_global = df.groupby('Tempo')['Valor'].mean().reset_index()
     
-    # 2. Identificar a saúde de cada string (comparando médias diárias)
-    # Filtramos o horário nobre (10h às 16h) para uma comparação de saúde mais justa
+    # 2. Identificação de strings abaixo da média (considerando média diária no horário útil)
     df_nobre = df[(df['Tempo'].dt.hour >= 10) & (df['Tempo'].dt.hour <= 16)]
-    media_total_inversor = df_nobre['Valor'].mean()
+    media_global_referencia = df_nobre['Valor'].mean()
     
-    fig = go.Figure()
+    strings_abaixo = []
+    for s in df['Nome do data point'].unique():
+        media_s = df_nobre[df_nobre['Nome do data point'] == s]['Valor'].mean()
+        if media_s < media_global_referencia:
+            strings_abaixo.append(s)
 
-    # 3. Adicionar as curvas das strings com cores condicionais
-    strings = df['Nome do data point'].unique()
-    for s in strings:
-        df_s = df[df['Nome do data point'] == s]
-        df_s_nobre = df_nobre[df_nobre['Nome do data point'] == s]
-        
-        media_s = df_s_nobre['Valor'].mean()
-        # Critério: Verde se >= 90% da média, Vermelho se < 90%
-        cor = '#28a745' if media_s >= (0.9 * media_total_inversor) else '#dc3545'
-        
-        fig.add_trace(go.Scatter(
-            x=df_s['Tempo'], y=df_s['Valor'],
-            name=f"String {s}",
-            line=dict(color=cor, width=1.5),
-            opacity=0.7
-        ))
+    # GRÁFICO 1: Panorama Geral (Todas as curvas)
+    fig_geral = px.line(df, x='Tempo', y='Valor', color='Nome do data point',
+                       title="Panorama Geral: Todas as Strings",
+                       labels={'Valor': 'Corrente (A)', 'Tempo': 'Horário'})
+    fig_geral.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Strings')
+    st.plotly_chart(fig_geral, use_container_width=True, key="curva_geral")
 
-    # 4. Adicionar a Curva Média (Destaque)
-    fig.add_trace(go.Scatter(
+    st.divider()
+
+    # GRÁFICO 2: Análise de Desvios (Média + Subperformance)
+    fig_desvio = go.Figure()
+    
+    # Adiciona a Média Global (Preto tracejado)
+    fig_desvio.add_trace(go.Scatter(
         x=df_media_global['Tempo'], y=df_media_global['Valor'],
         name="MÉDIA GLOBAL",
-        line=dict(color='black', width=3, dash='dash'),
-        hoverlabel=dict(bgcolor="black")
+        line=dict(color='black', width=3, dash='dash')
     ))
 
-    fig.update_layout(
-        title="Análise Comparativa de Corrente (A) vs Média do Inversor",
+    # Adiciona apenas as strings que estão abaixo da média
+    for s in strings_abaixo:
+        df_s = df[df['Nome do data point'] == s]
+        fig_desvio.add_trace(go.Scatter(
+            x=df_s['Tempo'], y=df_s['Valor'],
+            name=f"String {s} (Subperformance)",
+            line=dict(width=1.5),
+            opacity=0.8
+        ))
+
+    fig_desvio.update_layout(
+        title="Análise de Desvios: Strings Abaixo da Média Global",
         xaxis_title="Horário",
         yaxis_title="Corrente (A)",
         plot_bgcolor='rgba(0,0,0,0)',
         legend=dict(orientation="h", y=1.1, xanchor="right", x=1)
     )
-    return fig
+    st.plotly_chart(fig_desvio, use_container_width=True, key="curva_desvio")
 
 def plot_boxplot_strings(df):
     df_filtrado = df[(df['Tempo'].dt.hour >= 6) & (df['Tempo'].dt.hour <= 18)]
@@ -157,7 +164,7 @@ elif os.path.exists(ARQUIVO_PADRAO):
 if df_bruto is not None:
     datas_disponiveis = df_bruto['Data Apenas'].unique()
     data_sel = st.sidebar.selectbox("Filtre o Dia:", datas_disponiveis) if len(datas_disponiveis) > 1 else datas_disponiveis[0]
-    df_filtrado_data = df_bruto[df_bruto['Data Apenas'] == (data_sel if len(datas_disponiveis) > 1 else data_sel)]
+    df_filtrado_data = df_bruto[df_bruto['Data Apenas'] == data_sel]
     
     strings = df_filtrado_data['Nome do data point'].unique()
     sel_strings = st.sidebar.multiselect("Strings Visíveis:", strings, default=strings)
@@ -169,8 +176,7 @@ if df_bruto is not None:
         
         t1, t2, t3, t4 = st.tabs(["📈 Curvas de Performance", "📦 Boxplot", "📊 Total Acumulado", "🗓️ Heatmap"])
         with t1: 
-            st.info("💡 Legenda de Saúde: As curvas em VERDE estão operando com média próxima à do inversor (margem de 10%). As curvas em VERMELHO apresentam desvio negativo superior a 10%.")
-            st.plotly_chart(plot_linha_corrente(df_final), use_container_width=True, key="c_linha")
+            renderizar_aba_curvas(df_final)
         with t2: st.plotly_chart(plot_boxplot_strings(df_final), use_container_width=True, key="c_box")
         with t3: st.plotly_chart(plot_barras_acumulado(df_final), use_container_width=True, key="c_barra")
         with t4: st.plotly_chart(plot_heatmap_corrente(df_final), use_container_width=True, key="c_heat")
