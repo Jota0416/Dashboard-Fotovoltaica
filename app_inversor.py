@@ -69,10 +69,48 @@ def gerar_kpis(df):
     c4.metric("String com Pico de Corrente", f"{string_pico}")
 
 def plot_linha_corrente(df):
-    fig = px.line(df, x='Tempo', y='Valor', color='Nome do data point',
-                 title="Curva de Corrente (A) ao longo do tempo",
-                 labels={'Valor': 'Corrente (A)', 'Tempo': 'Horário'})
-    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Strings')
+    # 1. Calcular a curva média global do inversor
+    df_media_global = df.groupby('Tempo')['Valor'].mean().reset_index()
+    
+    # 2. Identificar a saúde de cada string (comparando médias diárias)
+    # Filtramos o horário nobre (10h às 16h) para uma comparação de saúde mais justa
+    df_nobre = df[(df['Tempo'].dt.hour >= 10) & (df['Tempo'].dt.hour <= 16)]
+    media_total_inversor = df_nobre['Valor'].mean()
+    
+    fig = go.Figure()
+
+    # 3. Adicionar as curvas das strings com cores condicionais
+    strings = df['Nome do data point'].unique()
+    for s in strings:
+        df_s = df[df['Nome do data point'] == s]
+        df_s_nobre = df_nobre[df_nobre['Nome do data point'] == s]
+        
+        media_s = df_s_nobre['Valor'].mean()
+        # Critério: Verde se >= 90% da média, Vermelho se < 90%
+        cor = '#28a745' if media_s >= (0.9 * media_total_inversor) else '#dc3545'
+        
+        fig.add_trace(go.Scatter(
+            x=df_s['Tempo'], y=df_s['Valor'],
+            name=f"String {s}",
+            line=dict(color=cor, width=1.5),
+            opacity=0.7
+        ))
+
+    # 4. Adicionar a Curva Média (Destaque)
+    fig.add_trace(go.Scatter(
+        x=df_media_global['Tempo'], y=df_media_global['Valor'],
+        name="MÉDIA GLOBAL",
+        line=dict(color='black', width=3, dash='dash'),
+        hoverlabel=dict(bgcolor="black")
+    ))
+
+    fig.update_layout(
+        title="Análise Comparativa de Corrente (A) vs Média do Inversor",
+        xaxis_title="Horário",
+        yaxis_title="Corrente (A)",
+        plot_bgcolor='rgba(0,0,0,0)',
+        legend=dict(orientation="h", y=1.1, xanchor="right", x=1)
+    )
     return fig
 
 def plot_boxplot_strings(df):
@@ -81,7 +119,6 @@ def plot_boxplot_strings(df):
                 title="Dispersão e Desvios de Corrente (06:00 - 18:00)",
                 labels={'Valor': 'Corrente (A)', 'Nome do data point': 'Strings'})
     fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
-    # Força o eixo X a ser uma categoria de texto, eliminando buracos numéricos
     fig.update_xaxes(type='category', categoryorder='category ascending')
     return fig
 
@@ -94,7 +131,6 @@ def plot_barras_acumulado(df):
                 title="Soma Acumulada de Corrente por String (06:00 - 18:00)",
                 labels={'Valor': 'Soma da Corrente (A)', 'Nome do data point': 'String'})
     fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
-    # Força o eixo X a ser uma categoria de texto, preservando a ordem do ranking
     fig.update_xaxes(type='category')
     return fig
 
@@ -105,7 +141,6 @@ def plot_heatmap_corrente(df):
     fig = px.imshow(df_pivot, aspect="auto", color_continuous_scale="Viridis",
                    title="Mapa de Calor: Intensidade de Corrente (A)",
                    labels=dict(x="Horário do Dia", y="String", color="Corrente (A)"))
-    # Força o eixo Y do heatmap a manter as categorias completas como texto
     fig.update_yaxes(type='category', categoryorder='category descending')
     return fig
 
@@ -132,8 +167,10 @@ if df_bruto is not None:
         st.title("⚡ Análise de Corrente por String - Inversor")
         gerar_kpis(df_final)
         
-        t1, t2, t3, t4 = st.tabs(["📈 Curvas", "📦 Boxplot", "📊 Total Acumulado", "🗓️ Heatmap"])
-        with t1: st.plotly_chart(plot_linha_corrente(df_final), use_container_width=True, key="c_linha")
+        t1, t2, t3, t4 = st.tabs(["📈 Curvas de Performance", "📦 Boxplot", "📊 Total Acumulado", "🗓️ Heatmap"])
+        with t1: 
+            st.info("💡 Legenda de Saúde: As curvas em VERDE estão operando com média próxima à do inversor (margem de 10%). As curvas em VERMELHO apresentam desvio negativo superior a 10%.")
+            st.plotly_chart(plot_linha_corrente(df_final), use_container_width=True, key="c_linha")
         with t2: st.plotly_chart(plot_boxplot_strings(df_final), use_container_width=True, key="c_box")
         with t3: st.plotly_chart(plot_barras_acumulado(df_final), use_container_width=True, key="c_barra")
         with t4: st.plotly_chart(plot_heatmap_corrente(df_final), use_container_width=True, key="c_heat")
