@@ -1,8 +1,10 @@
+%%writefile app_inversor.py
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import os
+import re
 
 st.set_page_config(page_title="Análise de Inversores - Strings", layout="wide")
 
@@ -25,21 +27,35 @@ def injetar_css_impressao():
 
 injetar_css_impressao()
 
+# --- FORMATAÇÃO DE NOMES ---
+def extrair_nome_curto(nome_longo):
+    """
+    Transforma 'EQUIP - Inversores 1 - INV, 01 - corrente string 14' em '1.14'
+    """
+    nome_str = str(nome_longo)
+    # Busca 'INV, 01' e 'string 14' extraindo apenas os números
+    match = re.search(r'INV,?\s*0*(\d+).*?string\s*(\d+)', nome_str, flags=re.IGNORECASE)
+    if match:
+        inv = match.group(1)
+        strg = match.group(2).zfill(2) # Garante que a string tenha sempre dois dígitos (ex: 01, 14)
+        return f"{inv}.{strg}"
+    return nome_str
+
 # --- CARREGAMENTO DE DADOS ---
 @st.cache_data
 def carregar_dados(arquivo):
     try:
-        # Suporte para CSV ou Excel
         if arquivo.name.endswith('.csv'):
             df = pd.read_csv(arquivo)
         else:
             df = pd.read_excel(arquivo)
             
-        # Padronização e conversão da coluna de tempo
+        # Aplica a limpeza de nomes na coluna de data points
+        df['Nome do data point'] = df['Nome do data point'].apply(extrair_nome_curto)
+            
         df['Tempo'] = pd.to_datetime(df['Tempo'], dayfirst=True)
         df = df.sort_values(['Nome do data point', 'Tempo'])
         
-        # Criação de colunas auxiliares para filtros
         df['Data Apenas'] = df['Tempo'].dt.date
         df['Hora'] = df['Tempo'].dt.strftime('%H:%M')
         
@@ -55,7 +71,6 @@ def gerar_kpis(df):
     corrente_med = df['Valor'].mean()
     qnt_strings = df['Nome do data point'].nunique()
     
-    # Identifica a string que atingiu o pico
     string_pico = df.loc[df['Valor'].idxmax(), 'Nome do data point'] if not df.empty else "-"
     
     c1.metric("Total de Strings Ativas", f"{qnt_strings}")
@@ -85,7 +100,6 @@ def plot_heatmap_corrente(df):
     if df.empty:
         return go.Figure().update_layout(title="Sem dados suficientes para o Mapa de Calor")
         
-    # Pivotar os dados para o formato de matriz (Strings no Y, Tempo no X)
     df_pivot = df.pivot_table(index='Nome do data point', columns='Hora', values='Valor', aggfunc='mean')
     
     fig = px.imshow(
@@ -117,7 +131,6 @@ elif os.path.exists(ARQUIVO_PADRAO):
 
 # --- EXECUÇÃO DO DASHBOARD ---
 if df_bruto is not None:
-    # Filtro de Data (caso haja múltiplos dias no arquivo)
     datas_disponiveis = df_bruto['Data Apenas'].unique()
     if len(datas_disponiveis) > 1:
         data_selecionada = st.sidebar.selectbox("Filtre o Dia:", datas_disponiveis)
@@ -125,7 +138,6 @@ if df_bruto is not None:
     else:
         df_filtrado_data = df_bruto
 
-    # Filtro de Strings
     strings_disponiveis = df_filtrado_data['Nome do data point'].unique()
     sel_strings = st.sidebar.multiselect("Strings Visíveis:", strings_disponiveis, default=strings_disponiveis)
     
