@@ -69,10 +69,7 @@ def gerar_kpis(df):
     c4.metric("String com Pico de Corrente", f"{string_pico}")
 
 def renderizar_aba_curvas(df):
-    # 1. Cálculo de Médias
     df_media_global = df.groupby('Tempo')['Valor'].mean().reset_index()
-    df_nobre = df[(df['Tempo'].dt.hour >= 10) & (df['Tempo'].dt.hour <= 16)]
-    media_global_ref = df_nobre['Valor'].mean()
 
     # GRÁFICO 1: Panorama Geral
     fig_geral = px.line(df, x='Tempo', y='Valor', color='Nome do data point',
@@ -84,37 +81,44 @@ def renderizar_aba_curvas(df):
     st.divider()
 
     # 2. Configuração da Tolerância e Diagnóstico
-    st.subheader("🔍 Diagnóstico de Subperformance")
+    st.subheader("🔍 Diagnóstico de Subperformance (Análise por Janelas Horárias)")
     
-    # O Slider agora fica posicionado imediatamente acima do Gráfico de Desvios
     col_slider, _ = st.columns([2, 2])
     with col_slider:
         margem_aceitavel = st.slider(
-            "Defina a tolerância aceitável abaixo da média (%):",
+            "Defina a tolerância aceitável abaixo da média da janela (%):",
             min_value=5, max_value=50, value=10, step=5,
-            help="Strings com média inferior a (Média Global - Tolerância) serão classificadas em subperformance."
+            help="O dia é fatiado em janelas de 1 hora. Se a string ficar abaixo do limite permitido em QUALQUER janela produtiva, ela será sinalizada para análise."
         )
     
     factor = (100 - margem_aceitavel) / 100
 
-    # 3. Filtro das strings baseado no slider
-    strings_abaixo = []
-    for s in df['Nome do data point'].unique():
-        media_s = df_nobre[df_nobre['Nome do data point'] == s]['Valor'].mean()
-        if media_s < (media_global_ref * factor):
-            strings_abaixo.append(s)
+    # 3. Filtro de strings (Janelas de 1 em 1 hora, das 6h às 18h)
+    strings_abaixo = set() # Usamos um 'set' (conjunto) para não duplicar o nome caso ela falhe em múltiplas horas
     
-    strings_abaixo = sorted(strings_abaixo)
+    for hora in range(6, 19):
+        df_hora = df[df['Tempo'].dt.hour == hora]
+        if not df_hora.empty:
+            media_global_hora = df_hora['Valor'].mean()
+            
+            # Filtro de ruído: Avalia apenas as horas em que o inversor está de fato gerando (exclui o crepúsculo extremo)
+            if media_global_hora > 1.0:
+                for s in df_hora['Nome do data point'].unique():
+                    media_s_hora = df_hora[df_hora['Nome do data point'] == s]['Valor'].mean()
+                    if media_s_hora < (media_global_hora * factor):
+                        strings_abaixo.add(s)
+    
+    strings_abaixo = sorted(list(strings_abaixo))
 
     # SELEÇÃO DE STRINGS PARA DETALHAMENTO
     if strings_abaixo:
         selecionadas_desvio = st.multiselect(
-            f"Strings detectadas com desvio > {margem_aceitavel}%:",
+            f"Strings detectadas com subperformance em pelo menos uma janela horária:",
             options=strings_abaixo,
             default=strings_abaixo
         )
     else:
-        st.success(f"✅ Nenhuma string operando com desvio superior a {margem_aceitavel}% detectada.")
+        st.success(f"✅ Nenhuma string apresentou desvio crítico nas janelas horárias.")
         selecionadas_desvio = []
 
     # GRÁFICO 2: Análise de Desvios
@@ -132,7 +136,7 @@ def renderizar_aba_curvas(df):
         ))
 
     fig_desvio.update_layout(
-        title=f"Análise de Desvios (Tolerância: {margem_aceitavel}%)",
+        title=f"Análise de Desvios Detalhada (Tolerância: {margem_aceitavel}%)",
         xaxis_title="Horário", yaxis_title="Corrente (A)",
         plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=1.1, xanchor="right", x=1)
     )
