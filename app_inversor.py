@@ -7,6 +7,25 @@ import re
 
 st.set_page_config(page_title="Análise de Inversores - Strings", layout="wide")
 
+ARQUIVO_PADRAO = "dados_corrente.xlsx"
+
+# --- CSS PARA IMPRESSÃO ---
+def injetar_css_impressao():
+    css = """
+    <style>
+    @media print {
+        @page { size: landscape; margin: 1cm; }
+        [data-testid="stSidebar"], header[data-testid="stHeader"], 
+        [data-testid="stTabs"] [role="tablist"], .stButton { display: none !important; }
+        .main .block-container { max-width: 100% !important; width: 100% !important; padding: 0 !important; }
+        .stPlotlyChart, .js-plotly-plot { max-width: 100% !important; width: 100% !important; page-break-inside: avoid !important; }
+    }
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
+
+injetar_css_impressao()
+
 # --- FORMATAÇÃO DE NOMES ---
 def extrair_nome_curto(nome_longo):
     nome_str = str(nome_longo)
@@ -50,11 +69,24 @@ def gerar_kpis(df):
     c4.metric("String com Pico de Corrente", f"{string_pico}")
 
 def renderizar_aba_curvas(df):
-    # 1. Cálculo da Média Global
+    # 1. Cálculo de Médias
     df_media_global = df.groupby('Tempo')['Valor'].mean().reset_index()
-    
-    # 2. Configuração da Tolerância via Slider
+    df_nobre = df[(df['Tempo'].dt.hour >= 10) & (df['Tempo'].dt.hour <= 16)]
+    media_global_ref = df_nobre['Valor'].mean()
+
+    # GRÁFICO 1: Panorama Geral
+    fig_geral = px.line(df, x='Tempo', y='Valor', color='Nome do data point',
+                       title="Panorama Geral: Performance de Todas as Strings",
+                       labels={'Valor': 'Corrente (A)', 'Tempo': 'Horário'})
+    fig_geral.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Strings')
+    st.plotly_chart(fig_geral, use_container_width=True, key="curva_geral")
+
+    st.divider()
+
+    # 2. Configuração da Tolerância e Diagnóstico
     st.subheader("🔍 Diagnóstico de Subperformance")
+    
+    # O Slider agora fica posicionado imediatamente acima do Gráfico de Desvios
     col_slider, _ = st.columns([2, 2])
     with col_slider:
         margem_aceitavel = st.slider(
@@ -65,10 +97,7 @@ def renderizar_aba_curvas(df):
     
     factor = (100 - margem_aceitavel) / 100
 
-    # 3. Identificação de strings abaixo da margem (horário nobre 10h-16h)
-    df_nobre = df[(df['Tempo'].dt.hour >= 10) & (df['Tempo'].dt.hour <= 16)]
-    media_global_ref = df_nobre['Valor'].mean()
-    
+    # 3. Filtro das strings baseado no slider
     strings_abaixo = []
     for s in df['Nome do data point'].unique():
         media_s = df_nobre[df_nobre['Nome do data point'] == s]['Valor'].mean()
@@ -76,15 +105,6 @@ def renderizar_aba_curvas(df):
             strings_abaixo.append(s)
     
     strings_abaixo = sorted(strings_abaixo)
-
-    # GRÁFICO 1: Panorama Geral
-    fig_geral = px.line(df, x='Tempo', y='Valor', color='Nome do data point',
-                       title="Panorama Geral: Performance de Todas as Strings",
-                       labels={'Valor': 'Corrente (A)', 'Tempo': 'Horário'})
-    fig_geral.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Strings')
-    st.plotly_chart(fig_geral, use_container_width=True, key="curva_geral")
-
-    st.divider()
 
     # SELEÇÃO DE STRINGS PARA DETALHAMENTO
     if strings_abaixo:
@@ -118,7 +138,6 @@ def renderizar_aba_curvas(df):
     )
     st.plotly_chart(fig_desvio, use_container_width=True, key="curva_desvio")
 
-# --- RESTANTE DAS FUNÇÕES (Boxplot, Barras, Heatmap) MANTIDAS ---
 def plot_boxplot_strings(df):
     df_filtrado = df[(df['Tempo'].dt.hour >= 6) & (df['Tempo'].dt.hour <= 18)]
     fig = px.box(df_filtrado, x='Nome do data point', y='Valor', color='Nome do data point',
