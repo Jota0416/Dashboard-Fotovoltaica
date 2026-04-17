@@ -40,7 +40,7 @@ def extrair_nome_curto(nome_longo):
 @st.cache_data
 def carregar_dados(arquivo):
     try:
-        if arquivo.name.endswith('.csv'):
+        if hasattr(arquivo, 'name') and arquivo.name.endswith('.csv'):
             df = pd.read_csv(arquivo)
         else:
             df = pd.read_excel(arquivo)
@@ -81,10 +81,11 @@ def plot_boxplot_strings(df):
                 title="Dispersão e Desvios de Corrente (06:00 - 18:00)",
                 labels={'Valor': 'Corrente (A)', 'Nome do data point': 'Strings'})
     fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
+    # Força o eixo X a ser uma categoria de texto, eliminando buracos numéricos
+    fig.update_xaxes(type='category', categoryorder='category ascending')
     return fig
 
 def plot_barras_acumulado(df):
-    # Considera apenas horário produtivo para o ranking de energia
     df_filtrado = df[(df['Tempo'].dt.hour >= 6) & (df['Tempo'].dt.hour <= 18)]
     df_resumo = df_filtrado.groupby('Nome do data point')['Valor'].sum().reset_index()
     df_resumo = df_resumo.sort_values('Valor', ascending=False)
@@ -93,6 +94,8 @@ def plot_barras_acumulado(df):
                 title="Soma Acumulada de Corrente por String (06:00 - 18:00)",
                 labels={'Valor': 'Soma da Corrente (A)', 'Nome do data point': 'String'})
     fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
+    # Força o eixo X a ser uma categoria de texto, preservando a ordem do ranking
+    fig.update_xaxes(type='category')
     return fig
 
 def plot_heatmap_corrente(df):
@@ -102,6 +105,8 @@ def plot_heatmap_corrente(df):
     fig = px.imshow(df_pivot, aspect="auto", color_continuous_scale="Viridis",
                    title="Mapa de Calor: Intensidade de Corrente (A)",
                    labels=dict(x="Horário do Dia", y="String", color="Corrente (A)"))
+    # Força o eixo Y do heatmap a manter as categorias completas como texto
+    fig.update_yaxes(type='category', categoryorder='category descending')
     return fig
 
 # --- INTERFACE ---
