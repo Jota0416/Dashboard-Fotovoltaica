@@ -72,7 +72,7 @@ def renderizar_aba_curvas(df):
     # 1. Cálculo da Média Global
     df_media_global = df.groupby('Tempo')['Valor'].mean().reset_index()
     
-    # 2. Identificação de strings abaixo da média (considerando média diária no horário útil)
+    # 2. Identificação de strings abaixo da média (referência: horário nobre 10h-16h)
     df_nobre = df[(df['Tempo'].dt.hour >= 10) & (df['Tempo'].dt.hour <= 16)]
     media_global_referencia = df_nobre['Valor'].mean()
     
@@ -81,38 +81,56 @@ def renderizar_aba_curvas(df):
         media_s = df_nobre[df_nobre['Nome do data point'] == s]['Valor'].mean()
         if media_s < media_global_referencia:
             strings_abaixo.append(s)
+    
+    strings_abaixo = sorted(strings_abaixo)
 
-    # GRÁFICO 1: Panorama Geral (Todas as curvas)
+    # GRÁFICO 1: Panorama Geral
     fig_geral = px.line(df, x='Tempo', y='Valor', color='Nome do data point',
-                       title="Panorama Geral: Todas as Strings",
+                       title="Panorama Geral: Performance de Todas as Strings",
                        labels={'Valor': 'Corrente (A)', 'Tempo': 'Horário'})
     fig_geral.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Strings')
     st.plotly_chart(fig_geral, use_container_width=True, key="curva_geral")
 
     st.divider()
 
-    # GRÁFICO 2: Análise de Desvios (Média + Subperformance)
+    # SELEÇÃO DE DESVIOS
+    st.subheader("🔍 Diagnóstico de Subperformance")
+    if strings_abaixo:
+        col_filtro, _ = st.columns([2, 1])
+        with col_filtro:
+            selecionadas_desvio = st.multiselect(
+                "Selecione as strings detectadas abaixo da média para visualização detalhada:",
+                options=strings_abaixo,
+                default=strings_abaixo,
+                help="O sistema detectou estas strings com performance inferior à média do inversor no horário nobre."
+            )
+    else:
+        st.success("✅ Nenhuma string operando abaixo da média global detectada para este período.")
+        selecionadas_desvio = []
+
+    # GRÁFICO 2: Análise de Desvios (Média + Selecionadas)
     fig_desvio = go.Figure()
     
-    # Adiciona a Média Global (Preto tracejado)
+    # Adiciona a Média Global (Sempre visível como meta)
     fig_desvio.add_trace(go.Scatter(
         x=df_media_global['Tempo'], y=df_media_global['Valor'],
         name="MÉDIA GLOBAL",
-        line=dict(color='black', width=3, dash='dash')
+        line=dict(color='black', width=3, dash='dash'),
+        hoverlabel=dict(bgcolor="black")
     ))
 
-    # Adiciona apenas as strings que estão abaixo da média
-    for s in strings_abaixo:
+    # Adiciona apenas as strings selecionadas pelo usuário
+    for s in selecionadas_desvio:
         df_s = df[df['Nome do data point'] == s]
         fig_desvio.add_trace(go.Scatter(
             x=df_s['Tempo'], y=df_s['Valor'],
-            name=f"String {s} (Subperformance)",
-            line=dict(width=1.5),
-            opacity=0.8
+            name=f"String {s}",
+            line=dict(width=2),
+            opacity=0.9
         ))
 
     fig_desvio.update_layout(
-        title="Análise de Desvios: Strings Abaixo da Média Global",
+        title="Análise de Desvios: Strings Selecionadas vs Média do Inversor",
         xaxis_title="Horário",
         yaxis_title="Corrente (A)",
         plot_bgcolor='rgba(0,0,0,0)',
@@ -167,7 +185,7 @@ if df_bruto is not None:
     df_filtrado_data = df_bruto[df_bruto['Data Apenas'] == data_sel]
     
     strings = df_filtrado_data['Nome do data point'].unique()
-    sel_strings = st.sidebar.multiselect("Strings Visíveis:", strings, default=strings)
+    sel_strings = st.sidebar.multiselect("Strings Visíveis no Painel:", strings, default=strings)
     
     if sel_strings:
         df_final = df_filtrado_data[df_filtrado_data['Nome do data point'].isin(sel_strings)]
