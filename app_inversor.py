@@ -28,9 +28,6 @@ injetar_css_impressao()
 
 # --- FORMATAÇÃO DE NOMES ---
 def extrair_nome_curto(nome_longo):
-    """
-    Transforma 'EQUIP - Inversores 1 - INV, 01 - corrente string 14' em '1.14'
-    """
     nome_str = str(nome_longo)
     match = re.search(r'INV,?\s*0*(\d+).*?string\s*(\d+)', nome_str, flags=re.IGNORECASE)
     if match:
@@ -49,13 +46,10 @@ def carregar_dados(arquivo):
             df = pd.read_excel(arquivo)
             
         df['Nome do data point'] = df['Nome do data point'].apply(extrair_nome_curto)
-            
         df['Tempo'] = pd.to_datetime(df['Tempo'], dayfirst=True)
         df = df.sort_values(['Nome do data point', 'Tempo'])
-        
         df['Data Apenas'] = df['Tempo'].dt.date
         df['Hora'] = df['Tempo'].dt.strftime('%H:%M')
-        
         return df
     except Exception as e:
         st.error(f"Erro ao processar arquivo: {e}")
@@ -67,7 +61,6 @@ def gerar_kpis(df):
     corrente_max = df['Valor'].max()
     corrente_med = df['Valor'].mean()
     qnt_strings = df['Nome do data point'].nunique()
-    
     string_pico = df.loc[df['Valor'].idxmax(), 'Nome do data point'] if not df.empty else "-"
     
     c1.metric("Total de Strings Ativas", f"{qnt_strings}")
@@ -76,93 +69,66 @@ def gerar_kpis(df):
     c4.metric("String com Pico de Corrente", f"{string_pico}")
 
 def plot_linha_corrente(df):
-    fig = px.line(
-        df, x='Tempo', y='Valor', color='Nome do data point',
-        title="Curva de Corrente (A) ao longo do tempo",
-        labels={'Valor': 'Corrente (A)', 'Tempo': 'Horário'}
-    )
+    fig = px.line(df, x='Tempo', y='Valor', color='Nome do data point',
+                 title="Curva de Corrente (A) ao longo do tempo",
+                 labels={'Valor': 'Corrente (A)', 'Tempo': 'Horário'})
     fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Strings')
     return fig
 
 def plot_boxplot_strings(df):
-    # Filtro operacional: Exclui dados noturnos para evitar distorção estatística
     df_filtrado = df[(df['Tempo'].dt.hour >= 6) & (df['Tempo'].dt.hour <= 18)]
+    fig = px.box(df_filtrado, x='Nome do data point', y='Valor', color='Nome do data point',
+                title="Dispersão e Desvios de Corrente (06:00 - 18:00)",
+                labels={'Valor': 'Corrente (A)', 'Nome do data point': 'Strings'})
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
+    return fig
+
+def plot_barras_acumulado(df):
+    # Considera apenas horário produtivo para o ranking de energia
+    df_filtrado = df[(df['Tempo'].dt.hour >= 6) & (df['Tempo'].dt.hour <= 18)]
+    df_resumo = df_filtrado.groupby('Nome do data point')['Valor'].sum().reset_index()
+    df_resumo = df_resumo.sort_values('Valor', ascending=False)
     
-    fig = px.box(
-        df_filtrado, x='Nome do data point', y='Valor', color='Nome do data point',
-        title="Dispersão e Desvios de Corrente por String (06:00 - 18:00)",
-        labels={'Valor': 'Corrente (A)', 'Nome do data point': 'Strings'}
-    )
+    fig = px.bar(df_resumo, x='Nome do data point', y='Valor', color='Nome do data point',
+                title="Soma Acumulada de Corrente por String (06:00 - 18:00)",
+                labels={'Valor': 'Soma da Corrente (A)', 'Nome do data point': 'String'})
     fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
     return fig
 
 def plot_heatmap_corrente(df):
     if df.empty:
-        return go.Figure().update_layout(title="Sem dados suficientes para o Mapa de Calor")
-        
+        return go.Figure().update_layout(title="Sem dados suficientes")
     df_pivot = df.pivot_table(index='Nome do data point', columns='Hora', values='Valor', aggfunc='mean')
-    
-    fig = px.imshow(
-        df_pivot, 
-        aspect="auto", 
-        color_continuous_scale="Viridis",
-        title="Mapa de Calor: Intensidade de Corrente (A)",
-        labels=dict(x="Horário do Dia", y="String", color="Corrente (A)")
-    )
+    fig = px.imshow(df_pivot, aspect="auto", color_continuous_scale="Viridis",
+                   title="Mapa de Calor: Intensidade de Corrente (A)",
+                   labels=dict(x="Horário do Dia", y="String", color="Corrente (A)"))
     return fig
 
-# --- LÓGICA DE ENTRADA DE DADOS ---
+# --- INTERFACE ---
 st.sidebar.header("📁 Dados do Inversor")
 df_bruto = None
-
-arquivo_upload = st.sidebar.file_uploader("Envie o arquivo (Excel ou CSV):", type=["xlsx", "csv"])
+arquivo_upload = st.sidebar.file_uploader("Envie o arquivo:", type=["xlsx", "csv"])
 
 if arquivo_upload:
     df_bruto = carregar_dados(arquivo_upload)
 elif os.path.exists(ARQUIVO_PADRAO):
-    with open(ARQUIVO_PADRAO, "rb") as f:
-        class FakeFile:
-            def __init__(self, content, name):
-                self.content = content
-                self.name = name
-            def read(self): return self.content
-        df_bruto = carregar_dados(FakeFile(f.read(), ARQUIVO_PADRAO))
-    st.sidebar.success(f"✅ Base padrão carregada.")
+    df_bruto = carregar_dados(open(ARQUIVO_PADRAO, "rb"))
 
-# --- EXECUÇÃO DO DASHBOARD ---
 if df_bruto is not None:
     datas_disponiveis = df_bruto['Data Apenas'].unique()
-    if len(datas_disponiveis) > 1:
-        data_selecionada = st.sidebar.selectbox("Filtre o Dia:", datas_disponiveis)
-        df_filtrado_data = df_bruto[df_bruto['Data Apenas'] == data_selecionada]
-    else:
-        df_filtrado_data = df_bruto
-
-    strings_disponiveis = df_filtrado_data['Nome do data point'].unique()
-    sel_strings = st.sidebar.multiselect("Strings Visíveis:", strings_disponiveis, default=strings_disponiveis)
+    data_sel = st.sidebar.selectbox("Filtre o Dia:", datas_disponiveis) if len(datas_disponiveis) > 1 else datas_disponiveis[0]
+    df_filtrado_data = df_bruto[df_bruto['Data Apenas'] == (data_sel if len(datas_disponiveis) > 1 else data_sel)]
+    
+    strings = df_filtrado_data['Nome do data point'].unique()
+    sel_strings = st.sidebar.multiselect("Strings Visíveis:", strings, default=strings)
     
     if sel_strings:
         df_final = df_filtrado_data[df_filtrado_data['Nome do data point'].isin(sel_strings)]
-        
         st.title("⚡ Análise de Corrente por String - Inversor")
-        st.divider()
-        
         gerar_kpis(df_final)
-        st.write("")
         
-        t1, t2, t3 = st.tabs(["📈 Curvas de Corrente", "📦 Análise de Desvios (Boxplot)", "🗓️ Mapa de Calor"])
-        
-        with t1:
-            st.plotly_chart(plot_linha_corrente(df_final), use_container_width=True, key="c_linha")
-        
-        with t2:
-            st.info("O Boxplot ajuda a identificar strings com subperformance crônica. Os dados noturnos (fora da janela 06h-18h) foram filtrados para não distorcer o cálculo dos quartis.")
-            st.plotly_chart(plot_boxplot_strings(df_final), use_container_width=True, key="c_box")
-            
-        with t3:
-            st.info("Cores mais escuras indicam baixa corrente. Quedas verticais (em um mesmo horário para várias strings) indicam sombreamento passageiro.")
-            st.plotly_chart(plot_heatmap_corrente(df_final), use_container_width=True, key="c_heat")
-
-else:
-    st.title("⚡ Análise de Corrente por String - Inversor")
-    st.info("👈 Faça o upload da planilha contendo as colunas 'Nome do data point', 'Tempo' e 'Valor' para visualizar o painel.")
+        t1, t2, t3, t4 = st.tabs(["📈 Curvas", "📦 Boxplot", "📊 Total Acumulado", "🗓️ Heatmap"])
+        with t1: st.plotly_chart(plot_linha_corrente(df_final), use_container_width=True, key="c_linha")
+        with t2: st.plotly_chart(plot_boxplot_strings(df_final), use_container_width=True, key="c_box")
+        with t3: st.plotly_chart(plot_barras_acumulado(df_final), use_container_width=True, key="c_barra")
+        with t4: st.plotly_chart(plot_heatmap_corrente(df_final), use_container_width=True, key="c_heat")
