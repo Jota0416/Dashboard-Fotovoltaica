@@ -81,26 +81,42 @@ def renderizar_aba_mensal(df_mes):
     col1, col2 = st.columns(2)
     
     with col1:
-        # Curva Média Mensal (Dia Típico) - Suavizada com Hover Ativo
+        # Curva Média Mensal (Dia Típico) - Com Seletor de Destaque
         df_mes['Hora_Bloco'] = df_mes['Tempo'].dt.floor('15min').dt.strftime('%H:%M')
         df_tipico = df_mes.groupby(['Hora_Bloco', 'Nome do data point'])['Valor'].mean().reset_index()
         df_tipico_global = df_mes.groupby('Hora_Bloco')['Valor'].mean().reset_index()
         
+        # Adiciona um seletor rápido para destacar uma string específica
+        lista_strings = ["Nenhuma"] + sorted(df_tipico['Nome do data point'].unique())
+        destaque = st.selectbox("Selecione uma String para destacar na curva:", lista_strings)
+        
         fig_tipico = go.Figure()
         
-        # Adiciona todas as strings (mais visíveis e com interação de mouse)
+        # 1. Desenha as linhas de FUNDO (Strings não destacadas)
         for s in df_tipico['Nome do data point'].unique():
-            df_s = df_tipico[df_tipico['Nome do data point'] == s]
+            if s != destaque:
+                df_s = df_tipico[df_tipico['Nome do data point'] == s]
+                fig_tipico.add_trace(go.Scatter(
+                    x=df_s['Hora_Bloco'], y=df_s['Valor'],
+                    mode='lines',
+                    line=dict(color='rgba(150, 150, 150, 0.4)', width=1.5), # Cinza com transparência
+                    name=s,
+                    showlegend=False,
+                    hovertemplate="<b>" + s + "</b><br>Corrente: %{y:.2f} A<extra></extra>"
+                ))
+        
+        # 2. Desenha a linha DESTACADA (Se alguma for selecionada)
+        if destaque != "Nenhuma":
+            df_destaque = df_tipico[df_tipico['Nome do data point'] == destaque]
             fig_tipico.add_trace(go.Scatter(
-                x=df_s['Hora_Bloco'], y=df_s['Valor'],
+                x=df_destaque['Hora_Bloco'], y=df_destaque['Valor'],
                 mode='lines',
-                line=dict(color='rgba(150, 150, 150, 0.7)', width=1.5), # Mais escuro, grosso e opaco
-                name=s,
-                showlegend=False,
-                hovertemplate="<b>" + s + "</b><br>Corrente: %{y:.2f} A<extra></extra>" # Balão individual
+                line=dict(color='orange', width=4), # Laranja, grossa e sem transparência
+                name=f"Destaque: {destaque}",
+                hovertemplate="<b>%{name}</b><br>Corrente: %{y:.2f} A<extra></extra>"
             ))
             
-        # Adiciona a Média Global em destaque
+        # 3. Desenha a MÉDIA GLOBAL (Por último para ficar por cima de todas)
         fig_tipico.add_trace(go.Scatter(
             x=df_tipico_global['Hora_Bloco'], y=df_tipico_global['Valor'],
             mode='lines',
@@ -114,20 +130,11 @@ def renderizar_aba_mensal(df_mes):
             xaxis_title="Horário",
             yaxis_title="Corrente (A)",
             plot_bgcolor='rgba(0,0,0,0)',
-            hovermode="closest" # Garante que o balão mostre apenas a linha que o mouse está tocando
+            hovermode="closest",
+            legend=dict(orientation="h", y=1.15, xanchor="right", x=1) # Coloca a legenda em cima
         )
         st.plotly_chart(fig_tipico, use_container_width=True)
-
-        # Acumulado Mensal - Monocromático Laranja
-        df_acum_mes = df_mes[(df_mes['Tempo'].dt.hour >= 6) & (df_mes['Tempo'].dt.hour <= 18)] \
-                        .groupby('Nome do data point')['Valor'].sum().reset_index()
-        fig_bar_mes = px.bar(df_acum_mes.sort_values('Valor', ascending=False), 
-                            x='Nome do data point', y='Valor',
-                            title="Soma de Corrente Acumulada no Mês",
-                            color_discrete_sequence=['orange'])
-        fig_bar_mes.update_xaxes(type='category')
-        st.plotly_chart(fig_bar_mes, use_container_width=True)
-
+        
     with col2:
         # Boxplot Mensal - Monocromático Laranja
         df_box_mes = df_mes[(df_mes['Tempo'].dt.hour >= 6) & (df_mes['Tempo'].dt.hour <= 18)]
