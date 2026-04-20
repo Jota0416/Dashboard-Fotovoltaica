@@ -196,11 +196,24 @@ def plot_estabilidade(df):
     df_volatilidade = df_sorted.groupby('Nome do data point')['Variacao'].sum().reset_index()
     df_volatilidade = df_volatilidade.sort_values('Variacao', ascending=False)
 
+    # Calcula a média da volatilidade entre todas as strings
+    media_volatilidade = df_volatilidade['Variacao'].mean()
+
     fig = px.bar(
         df_volatilidade, x='Nome do data point', y='Variacao', color='Nome do data point',
         title="Índice de Volatilidade (Soma das Flutuações de Corrente)",
         labels={'Variacao': 'Soma das Flutuações (A)', 'Nome do data point': 'String'}
     )
+    
+    # Adiciona a linha horizontal tracejada representando a média
+    fig.add_hline(
+        y=media_volatilidade, 
+        line_dash="dash", 
+        line_color="black", 
+        annotation_text=f"Média: {media_volatilidade:.2f} A", 
+        annotation_position="top right"
+    )
+
     fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
     fig.update_xaxes(type='category')
     return fig
