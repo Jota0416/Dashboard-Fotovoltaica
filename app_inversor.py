@@ -81,44 +81,42 @@ def renderizar_aba_curvas(df):
     st.divider()
 
     # 2. Configuração da Tolerância e Diagnóstico
-    st.subheader("🔍 Diagnóstico de Subperformance (Análise por Janelas Horárias)")
+    st.subheader("🔍 Diagnóstico de Subperformance (Média Diária)")
     
     col_slider, _ = st.columns([2, 2])
     with col_slider:
         margem_aceitavel = st.slider(
-            "Defina a tolerância aceitável abaixo da média da janela (%):",
+            "Defina a tolerância aceitável abaixo da média diária (%):",
             min_value=5, max_value=50, value=10, step=5,
-            help="O dia é fatiado em janelas de 1 hora. Se a string ficar abaixo do limite permitido em QUALQUER janela produtiva, ela será sinalizada para análise."
+            help="Se a média de geração da string ao longo de todo o dia ficar abaixo do limite tolerado, ela será sinalizada."
         )
     
     factor = (100 - margem_aceitavel) / 100
 
-    # 3. Filtro de strings (Janelas de 1 em 1 hora, das 6h às 18h)
-    strings_abaixo = set() # Usamos um 'set' (conjunto) para não duplicar o nome caso ela falhe em múltiplas horas
+    # 3. Filtro de strings (Média do dia inteiro, considerando o período produtivo das 6h às 18h)
+    df_produtivo = df[(df['Tempo'].dt.hour >= 6) & (df['Tempo'].dt.hour <= 18)]
+    strings_abaixo = []
     
-    for hora in range(6, 19):
-        df_hora = df[df['Tempo'].dt.hour == hora]
-        if not df_hora.empty:
-            media_global_hora = df_hora['Valor'].mean()
-            
-            # Filtro de ruído: Avalia apenas as horas em que o inversor está de fato gerando (exclui o crepúsculo extremo)
-            if media_global_hora > 1.0:
-                for s in df_hora['Nome do data point'].unique():
-                    media_s_hora = df_hora[df_hora['Nome do data point'] == s]['Valor'].mean()
-                    if media_s_hora < (media_global_hora * factor):
-                        strings_abaixo.add(s)
+    if not df_produtivo.empty:
+        media_global_dia = df_produtivo['Valor'].mean()
+        
+        if media_global_dia > 0:
+            for s in df_produtivo['Nome do data point'].unique():
+                media_s = df_produtivo[df_produtivo['Nome do data point'] == s]['Valor'].mean()
+                if media_s < (media_global_dia * factor):
+                    strings_abaixo.append(s)
     
-    strings_abaixo = sorted(list(strings_abaixo))
+    strings_abaixo = sorted(strings_abaixo)
 
     # SELEÇÃO DE STRINGS PARA DETALHAMENTO
     if strings_abaixo:
         selecionadas_desvio = st.multiselect(
-            f"Strings detectadas com subperformance em pelo menos uma janela horária:",
+            f"Strings detectadas com subperformance na média diária:",
             options=strings_abaixo,
             default=strings_abaixo
         )
     else:
-        st.success(f"✅ Nenhuma string apresentou desvio crítico nas janelas horárias.")
+        st.success(f"✅ Nenhuma string apresentou desvio crítico na média do dia.")
         selecionadas_desvio = []
 
     # GRÁFICO 2: Análise de Desvios
