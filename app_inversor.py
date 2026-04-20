@@ -81,30 +81,23 @@ def renderizar_aba_mensal(df_mes):
     col1, col2 = st.columns(2)
     
     with col1:
-        # Curva Média Mensal (Dia Típico) - Suavizada e com Hierarquia Visual
-        
-        # 1. Cria uma coluna arredondando o tempo para blocos de 15 minutos
+        # Curva Média Mensal (Dia Típico) - Suavizada com Hover Ativo
         df_mes['Hora_Bloco'] = df_mes['Tempo'].dt.floor('15min').dt.strftime('%H:%M')
-        
-        # 2. Calcula a média por string dentro desses blocos
         df_tipico = df_mes.groupby(['Hora_Bloco', 'Nome do data point'])['Valor'].mean().reset_index()
-        
-        # 3. Calcula a média global do inversor para o mesmo bloco
         df_tipico_global = df_mes.groupby('Hora_Bloco')['Valor'].mean().reset_index()
         
         fig_tipico = go.Figure()
         
-        # Adiciona todas as strings em cinza claro ao fundo (elimina a poluição visual de cores)
+        # Adiciona todas as strings (mais visíveis e com interação de mouse)
         for s in df_tipico['Nome do data point'].unique():
             df_s = df_tipico[df_tipico['Nome do data point'] == s]
             fig_tipico.add_trace(go.Scatter(
                 x=df_s['Hora_Bloco'], y=df_s['Valor'],
                 mode='lines',
-                line=dict(color='lightgray', width=1),
-                opacity=0.4,
+                line=dict(color='rgba(150, 150, 150, 0.7)', width=1.5), # Mais escuro, grosso e opaco
                 name=s,
                 showlegend=False,
-                hoverinfo='skip' # Remove os tooltips das linhas de fundo para não atrapalhar
+                hovertemplate="<b>" + s + "</b><br>Corrente: %{y:.2f} A<extra></extra>" # Balão individual
             ))
             
         # Adiciona a Média Global em destaque
@@ -113,7 +106,7 @@ def renderizar_aba_mensal(df_mes):
             mode='lines',
             line=dict(color='black', width=3.5),
             name="Média Global",
-            hoverlabel=dict(bgcolor="black")
+            hovertemplate="<b>MÉDIA GLOBAL</b><br>Corrente: %{y:.2f} A<extra></extra>"
         ))
         
         fig_tipico.update_layout(
@@ -121,7 +114,7 @@ def renderizar_aba_mensal(df_mes):
             xaxis_title="Horário",
             yaxis_title="Corrente (A)",
             plot_bgcolor='rgba(0,0,0,0)',
-            hovermode="x unified"
+            hovermode="closest" # Garante que o balão mostre apenas a linha que o mouse está tocando
         )
         st.plotly_chart(fig_tipico, use_container_width=True)
 
