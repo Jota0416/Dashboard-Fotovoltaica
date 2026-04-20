@@ -125,16 +125,18 @@ def renderizar_aba_mensal(df_mes):
         fig_tipico.update_layout(title="Dia Típico (Média 15min)", plot_bgcolor='rgba(0,0,0,0)', hovermode="closest")
         st.plotly_chart(fig_tipico, use_container_width=True)
 
-        # Acumulado Mensal Laranja
+        # Acumulado Mensal Laranja com Média
         df_acum = df_prod.groupby('Nome do data point')['Valor'].sum().reset_index()
+        media_acum_mes = df_acum['Valor'].mean()
         fig_bar = px.bar(df_acum.sort_values('Valor', ascending=False), x='Nome do data point', y='Valor',
                         title="Acumulado Mensal (Ah)", color_discrete_sequence=['orange'])
+        fig_bar.add_hline(y=media_acum_mes, line_dash="dash", line_color="black", annotation_text=f"Média: {media_acum_mes:.2f} Ah")
         fig_bar.update_xaxes(type='category', categoryorder='array', categoryarray=sorted(df_acum['Nome do data point'].unique()))
         st.plotly_chart(fig_bar, use_container_width=True)
 
     with col2:
-        # Boxplot Laranja
-        fig_box = px.box(df_prod, x='Nome do data point', y='Valor', title="Dispersão Mensal", color_discrete_sequence=['orange'])
+        # Boxplot Laranja (Já usa df_prod filtrado 6h-18h)
+        fig_box = px.box(df_prod, x='Nome do data point', y='Valor', title="Dispersão Mensal (06h-18h)", color_discrete_sequence=['orange'])
         fig_box.update_xaxes(type='category', categoryorder='array', categoryarray=sorted(df_prod['Nome do data point'].unique()))
         st.plotly_chart(fig_box, use_container_width=True)
 
@@ -203,16 +205,22 @@ if arquivo:
             df_fd = df_d[df_d['Nome do data point'].isin(sel_str)]
             df_fm = df_m[df_m['Nome do data point'].isin(sel_str)]
             
+            # Filtro produtivo (06h - 18h) para uso nas abas diárias
+            df_fd_prod = df_fd[(df_fd['Tempo'].dt.hour >= 6) & (df_fd['Tempo'].dt.hour <= 18)]
+            
             t = st.tabs(["📊 Mensal", "📈 Curvas", "📦 Boxplot", "📊 Acumulado", "🗓️ Heatmap", "☀️ Atividade", "⚡ Estabilidade"])
             with t[0]: renderizar_aba_mensal(df_fm)
             with t[1]: renderizar_aba_curvas(df_fd)
             with t[2]: 
-                f_box = px.box(df_fd, x='Nome do data point', y='Valor', color='Nome do data point', title="Dispersão Diária")
-                f_box.update_xaxes(type='category', categoryorder='array', categoryarray=sorted(df_fd['Nome do data point'].unique()))
+                f_box = px.box(df_fd_prod, x='Nome do data point', y='Valor', color='Nome do data point', title="Dispersão Diária (06h-18h)")
+                f_box.update_xaxes(type='category', categoryorder='array', categoryarray=sorted(df_fd_prod['Nome do data point'].unique()))
                 st.plotly_chart(f_box, use_container_width=True)
             with t[3]: 
-                f_bar = px.bar(df_fd.groupby('Nome do data point')['Valor'].sum().reset_index(), x='Nome do data point', y='Valor', color='Nome do data point', title="Acumulado Diário")
-                f_bar.update_xaxes(type='category', categoryorder='array', categoryarray=sorted(df_fd['Nome do data point'].unique()))
+                df_acum_dia = df_fd_prod.groupby('Nome do data point')['Valor'].sum().reset_index()
+                media_acum_dia = df_acum_dia['Valor'].mean()
+                f_bar = px.bar(df_acum_dia.sort_values('Valor', ascending=False), x='Nome do data point', y='Valor', color='Nome do data point', title="Acumulado Diário (06h-18h)")
+                f_bar.add_hline(y=media_acum_dia, line_dash="dash", line_color="black", annotation_text=f"Média: {media_acum_dia:.2f} Ah")
+                f_bar.update_xaxes(type='category', categoryorder='array', categoryarray=sorted(df_acum_dia['Nome do data point'].unique()))
                 st.plotly_chart(f_bar, use_container_width=True)
             with t[4]: 
                 f_heat = px.imshow(df_fd.pivot_table(index='Nome do data point', columns='Hora', values='Valor', aggfunc='mean'), aspect="auto", color_continuous_scale="Viridis", title="Heatmap Diário")
@@ -230,6 +238,6 @@ if arquivo:
                 df_sv['V'] = df_sv.groupby('Nome do data point')['Valor'].diff().abs()
                 df_vol = df_sv.groupby('Nome do data point')['V'].sum().reset_index()
                 f_v = px.bar(df_vol, x='Nome do data point', y='V', color='Nome do data point', title="Volatilidade Diária")
-                f_v.add_hline(y=df_vol['V'].mean(), line_dash="dash", line_color="black")
+                f_v.add_hline(y=df_vol['V'].mean(), line_dash="dash", line_color="black", annotation_text=f"Média: {df_vol['V'].mean():.2f} A")
                 f_v.update_xaxes(type='category', categoryorder='array', categoryarray=sorted(df_fd['Nome do data point'].unique()))
                 st.plotly_chart(f_v, use_container_width=True)
