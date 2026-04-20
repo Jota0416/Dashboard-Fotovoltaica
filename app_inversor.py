@@ -81,36 +81,39 @@ def renderizar_aba_mensal(df_mes):
     col1, col2 = st.columns(2)
     
     with col1:
-        # Curva Média Mensal (Dia Típico)
+        # Curva Média Mensal (Dia Típico) - Mantido colorido
         df_tipico = df_mes.groupby(['Hora', 'Nome do data point'])['Valor'].mean().reset_index()
         fig_tipico = px.line(df_tipico, x='Hora', y='Valor', color='Nome do data point',
                             title="Dia Típico: Comportamento Médio por Hora")
         st.plotly_chart(fig_tipico, use_container_width=True)
 
-        # Acumulado Mensal
+        # Acumulado Mensal - Monocromático Laranja
         df_acum_mes = df_mes[(df_mes['Tempo'].dt.hour >= 6) & (df_mes['Tempo'].dt.hour <= 18)] \
                         .groupby('Nome do data point')['Valor'].sum().reset_index()
         fig_bar_mes = px.bar(df_acum_mes.sort_values('Valor', ascending=False), 
-                            x='Nome do data point', y='Valor', color='Nome do data point',
-                            title="Soma de Corrente Acumulada no Mês")
+                            x='Nome do data point', y='Valor',
+                            title="Soma de Corrente Acumulada no Mês",
+                            color_discrete_sequence=['orange'])
         fig_bar_mes.update_xaxes(type='category')
         st.plotly_chart(fig_bar_mes, use_container_width=True)
 
     with col2:
-        # Boxplot Mensal
+        # Boxplot Mensal - Monocromático Laranja
         df_box_mes = df_mes[(df_mes['Tempo'].dt.hour >= 6) & (df_mes['Tempo'].dt.hour <= 18)]
-        fig_box_mes = px.box(df_box_mes, x='Nome do data point', y='Valor', color='Nome do data point',
-                            title="Dispersão Mensal de Corrente (06h-18h)")
+        fig_box_mes = px.box(df_box_mes, x='Nome do data point', y='Valor',
+                            title="Dispersão Mensal de Corrente (06h-18h)",
+                            color_discrete_sequence=['orange'])
         fig_box_mes.update_xaxes(type='category')
         st.plotly_chart(fig_box_mes, use_container_width=True)
 
-        # Estabilidade Mensal (Volatilidade Acumulada)
+        # Estabilidade Mensal (Volatilidade Acumulada) - Monocromático Laranja
         df_mes_sorted = df_mes.sort_values(['Nome do data point', 'Tempo'])
         df_mes_sorted['Variacao'] = df_mes_sorted.groupby('Nome do data point')['Valor'].diff().abs()
         df_vol_mes = df_mes_sorted.groupby('Nome do data point')['Variacao'].sum().reset_index()
         fig_vol_mes = px.bar(df_vol_mes.sort_values('Variacao', ascending=False), 
-                            x='Nome do data point', y='Variacao', color='Nome do data point',
-                            title="Índice de Volatilidade Acumulado no Mês")
+                            x='Nome do data point', y='Variacao',
+                            title="Índice de Volatilidade Acumulado no Mês",
+                            color_discrete_sequence=['orange'])
         fig_vol_mes.update_xaxes(type='category')
         st.plotly_chart(fig_vol_mes, use_container_width=True)
 
@@ -122,7 +125,7 @@ def renderizar_aba_mensal(df_mes):
     fig_heat_mes.update_yaxes(type='category')
     st.plotly_chart(fig_heat_mes, use_container_width=True)
 
-# --- FUNÇÕES ORIGINAIS (MANTIDAS) ---
+# --- FUNÇÕES ORIGINAIS DIÁRIAS (MANTIDAS) ---
 def renderizar_aba_curvas(df):
     df_media_global = df.groupby('Tempo')['Valor'].mean().reset_index()
     fig_geral = px.line(df, x='Tempo', y='Valor', color='Nome do data point', title="Panorama Geral: Performance de Todas as Strings")
