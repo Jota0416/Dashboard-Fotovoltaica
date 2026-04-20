@@ -93,7 +93,7 @@ def renderizar_aba_curvas(df):
     
     factor = (100 - margem_aceitavel) / 100
 
-    # 3. Filtro de strings (Média do dia inteiro, considerando o período produtivo das 6h às 18h)
+    # 3. Filtro de strings (Média do dia inteiro)
     df_produtivo = df[(df['Tempo'].dt.hour >= 6) & (df['Tempo'].dt.hour <= 18)]
     strings_abaixo = []
     
@@ -166,6 +166,45 @@ def plot_heatmap_corrente(df):
     fig.update_yaxes(type='category', categoryorder='category descending')
     return fig
 
+def plot_periodo_ativo(df):
+    # Considera ativa a string gerando mais de 0.5A
+    df_ativo = df[df['Valor'] >= 0.5]
+    if df_ativo.empty:
+        return go.Figure().update_layout(title="Nenhuma string atingiu o limiar de 0.5A")
+
+    # Identifica o primeiro e o último registro de geração no dia
+    resumo = df_ativo.groupby('Nome do data point').agg(
+        Inicio=('Tempo', 'min'),
+        Fim=('Tempo', 'max')
+    ).reset_index()
+
+    fig = px.timeline(
+        resumo, x_start="Inicio", x_end="Fim", y="Nome do data point", color="Nome do data point",
+        title="Período Produtivo das Strings (Nascer e Pôr do Sol do Inversor)",
+        labels={"Nome do data point": "String"}
+    )
+    # Inverte o eixo Y para ordem crescente de strings (de cima para baixo)
+    fig.update_yaxes(autorange="reversed", type='category')
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
+    return fig
+
+def plot_estabilidade(df):
+    # Calcula a flutuação somando o desvio absoluto entre as medições sequenciais
+    df_sorted = df.sort_values(['Nome do data point', 'Tempo'])
+    df_sorted['Variacao'] = df_sorted.groupby('Nome do data point')['Valor'].diff().abs()
+    
+    df_volatilidade = df_sorted.groupby('Nome do data point')['Variacao'].sum().reset_index()
+    df_volatilidade = df_volatilidade.sort_values('Variacao', ascending=False)
+
+    fig = px.bar(
+        df_volatilidade, x='Nome do data point', y='Variacao', color='Nome do data point',
+        title="Índice de Volatilidade (Soma das Flutuações de Corrente)",
+        labels={'Variacao': 'Soma das Flutuações (A)', 'Nome do data point': 'String'}
+    )
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
+    fig.update_xaxes(type='category')
+    return fig
+
 # --- INTERFACE PRINCIPAL ---
 st.sidebar.header("📁 Dados do Inversor")
 arquivo_upload = st.sidebar.file_uploader("Envie o arquivo:", type=["xlsx", "csv"])
@@ -185,8 +224,19 @@ if arquivo_upload:
             st.title("⚡ Análise de Corrente por String")
             gerar_kpis(df_final)
             
-            t1, t2, t3, t4 = st.tabs(["📈 Curvas de Performance", "📦 Boxplot", "📊 Total Acumulado", "🗓️ Heatmap"])
+            t1, t2, t3, t4, t5, t6 = st.tabs([
+                "📈 Curvas de Performance", "📦 Boxplot", "📊 Total Acumulado", 
+                "🗓️ Heatmap", "☀️ Período Ativo", "⚡ Estabilidade"
+            ])
             with t1: renderizar_aba_curvas(df_final)
             with t2: st.plotly_chart(plot_boxplot_strings(df_final), use_container_width=True)
             with t3: st.plotly_chart(plot_barras_acumulado(df_final), use_container_width=True)
             with t4: st.plotly_chart(plot_heatmap_corrente(df_final), use_container_width=True)
+            
+            with t5: 
+                st.info("O Diagrama de Período Ativo mapeia o horário exato de partida e desligamento de cada string (limiar > 0.5A). Um atraso isolado na partida evidencia sombreamento de horizonte no amanhecer ou entardecer.")
+                st.plotly_chart(plot_periodo_ativo(df_final), use_container_width=True)
+                
+            with t6: 
+                st.info("O Índice de Volatilidade ranqueia as strings baseando-se na soma de todas as variações abruptas de corrente. Barras significativamente maiores que a média são assinaturas de intermitência física, como conectores soltos, diodos defeituosos ou falhas de isolamento.")
+                st.plotly_chart(plot_estabilidade(df_final), use_container_width=True)
